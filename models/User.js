@@ -15,11 +15,33 @@ const userSchema = new mongoose.Schema(
       lowercase: true,
       trim: true,
     },
+    username: {
+      type: String,
+      unique: true,
+      sparse: true,
+      lowercase: true,
+      trim: true,
+      minlength: 3,
+      maxlength: 24,
+      match: /^[a-z0-9_.]+$/,
+    },
+    phone: {
+      type: String,
+      unique: true,
+      sparse: true,
+      trim: true,
+    },
     password: {
       type: String,
       required: [true, 'Password is required'],
       minlength: 6,
     },
+    role: {
+      type: String,
+      enum: ['user', 'admin'],
+      default: 'user',
+    },
+    contacts: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
     onlineStatus: {
       type: Boolean,
       default: false,

@@ -1,11 +1,11 @@
 const express = require('express');
 const router = express.Router();
-const { getUsers } = require('../controllers/authController');
+const { getConversations, searchPeople, addContact, updateMyPhone } = require('../controllers/conversationController');
 const { protect } = require('../middleware/authMiddleware');
 
-// @route   GET /api/users
-// @desc    Get all registered users except the current logged-in user
-// @access  Private
-router.get('/', protect, getUsers);
+router.get('/conversations', protect, getConversations);
+router.get('/search', protect, searchPeople);
+router.post('/contacts', protect, addContact);
+router.patch('/me/phone', protect, updateMyPhone);
 
 module.exports = router;

@@ -8,35 +8,50 @@ const connectDB = require('./config/db');
 const authRoutes = require('./routes/authRoutes');
 const userRoutes = require('./routes/userRoutes');
 const messageRoutes = require('./routes/messageRoutes');
+const adminRoutes = require('./routes/adminRoutes');
 const socketHandler = require('./socket/socketHandler');
 
 // Load environment variables from .env
 dotenv.config();
 
-// Connect to MongoDB
-connectDB();
-
 const app = express();
 
 // Middleware
-app.use(cors({ origin: process.env.CLIENT_URL || '*' }));
+const allowedOrigins = [process.env.CLIENT_URL, process.env.CLIENT_URLS]
+  .filter(Boolean)
+  .flatMap((value) => value.split(','))
+  .map((value) => value.trim().replace(/\/+$/, ''))
+  .filter(Boolean);
+const allowAllOrigins = allowedOrigins.length === 0 || allowedOrigins.includes('*');
+const corsOrigin = (origin, callback) => {
+  if (!origin || allowAllOrigins || allowedOrigins.includes(origin)) {
+    return callback(null, true);
+  }
+  return callback(new Error(`CORS blocked origin: ${origin}`));
+};
+
+app.use(cors({ origin: corsOrigin }));
 app.use(express.json());
 
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/messages', messageRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Health check route
 app.get('/', (req, res) => {
   res.send('Real-Time Chat App API is running...');
+});
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', database: 'connected' });
 });
 
 // Create HTTP server and attach Socket.IO
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: process.env.CLIENT_URL || '*',
+    origin: allowAllOrigins ? '*' : allowedOrigins,
     methods: ['GET', 'POST'],
   },
 });
@@ -45,6 +60,19 @@ const io = new Server(server, {
 socketHandler(io);
 
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+
+const startServer = async () => {
+  if (!process.env.JWT_SECRET) {
+    throw new Error('JWT_SECRET is not configured');
+  }
+
+  await connectDB();
+  server.listen(PORT, () => {
+    console.log(`Server ready on port ${PORT}`);
+  });
+};
+
+startServer().catch((error) => {
+  console.error(`Server startup failed: ${error.message}`);
+  process.exit(1);
 });

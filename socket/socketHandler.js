@@ -2,8 +2,11 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const Message = require('../models/Message');
 
-// Keeps track of currently connected users: userId -> socketId
+// Keep every active socket per user so another tab/device cannot mark the
+// account offline while one of its other sockets is still connected.
 const onlineUsers = new Map();
+
+const getOnlineUserIds = () => [...onlineUsers.keys()];
 
 const socketHandler = (io) => {
   // Middleware: authenticate every socket connection using the JWT token
@@ -26,8 +29,12 @@ const socketHandler = (io) => {
   io.on('connection', async (socket) => {
     console.log(`Socket connected: user=${socket.userId}, socket=${socket.id}`);
 
-    // Track the user as online
-    onlineUsers.set(socket.userId, socket.id);
+    // Track this socket and publish the authoritative presence snapshot.
+    const userSockets = onlineUsers.get(socket.userId) || new Set();
+    const wasAlreadyOnline = userSockets.size > 0;
+    userSockets.add(socket.id);
+    onlineUsers.set(socket.userId, userSockets);
+    io.emit('onlineUsers', getOnlineUserIds());
 
     // Join a personal room named after the user's ID so we can
     // send messages directly to this user from anywhere
@@ -40,8 +47,8 @@ const socketHandler = (io) => {
       console.error('Failed to update online status:', err.message);
     }
 
-    // Notify everyone that this user is now online
-    io.emit('userOnline', socket.userId);
+    // Notify everyone when this account first becomes online.
+    if (!wasAlreadyOnline) io.emit('userOnline', socket.userId);
 
     // --- CLIENT EVENT: join ---
     // Client explicitly joins their personal room (kept for clarity / re-join scenarios)
@@ -89,6 +96,10 @@ const socketHandler = (io) => {
     // --- DISCONNECT ---
     socket.on('disconnect', async () => {
       console.log(`Socket disconnected: user=${socket.userId}`);
+      const userSockets = onlineUsers.get(socket.userId);
+      if (!userSockets) return;
+      userSockets.delete(socket.id);
+      if (userSockets.size > 0) return;
       onlineUsers.delete(socket.userId);
 
       try {
@@ -99,6 +110,7 @@ const socketHandler = (io) => {
 
       // Notify everyone that this user went offline
       io.emit('userOffline', socket.userId);
+      io.emit('onlineUsers', getOnlineUserIds());
     });
   });
 };
